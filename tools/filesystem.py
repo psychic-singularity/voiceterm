@@ -1,8 +1,6 @@
 from pathlib import Path
-from security.pending_actions import request_delete,request_create_file
+from security.pending_actions import request_delete, request_create_file
 
-# Use the directory from which VoiceTerm is launched.
-PROJECT_ROOT = Path.cwd().resolve()
 IGNORED_DIRS = {
     ".git",
     ".venv",
@@ -11,11 +9,17 @@ IGNORED_DIRS = {
     "node_modules",
 }
 
+def get_project_root() -> Path:
+    """Return the active project root for the current working directory."""
+    return Path.cwd().resolve()
+
+
 def resolve_path(path: str) -> Path:
     """Resolve a path and prevent access outside the project root."""
-    target = (PROJECT_ROOT / path).resolve()
+    project_root = get_project_root()
+    target = (project_root / path).resolve()
 
-    if not target.is_relative_to(PROJECT_ROOT):
+    if not target.is_relative_to(project_root):
         raise ValueError("Access outside the project directory is not allowed.")
 
     return target
@@ -108,7 +112,7 @@ def search_files(query: str, path: str = ".") -> str:
 
             for line_number, line in enumerate(content.splitlines(), 1):
                 if query.casefold() in line.casefold():
-                    relative = file_path.relative_to(PROJECT_ROOT)
+                    relative = file_path.relative_to(get_project_root())
                     results.append(
                         f"{relative}:{line_number}: {line.strip()[:200]}"
                     )
@@ -125,8 +129,8 @@ def delete_file(path: str) -> str:
     """Request confirmation before deleting a project file."""
     return request_delete(path)
 
-def create_file(path: str)->str:
-    """Request confirmation before deleting a project file."""
-    return request_create_file(path)
 
+def create_file(path: str, content: str = "") -> str:
+    """Request confirmation before creating a project file."""
+    return request_create_file(path, content)
     

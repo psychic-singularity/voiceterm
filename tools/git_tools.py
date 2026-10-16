@@ -2,15 +2,19 @@
 import subprocess
 from pathlib import Path
 
-PROJECT_ROOT = Path.cwd().resolve()
+
+def get_project_root() -> Path:
+    """Return the active project root for the current working directory."""
+    return Path.cwd().resolve()
 
 
 def run_git(*args: str) -> str:
     """Run a read-only Git command in the VoiceTerm project."""
+    project_root = get_project_root()
     try:
         result = subprocess.run(
             ["git", *args],
-            cwd=PROJECT_ROOT,
+            cwd=project_root,
             capture_output=True,
             text=True,
             timeout=15,

@@ -9,6 +9,7 @@ import security.pending_actions as pending_actions
 
 console = Console()
 
+## fix the permission functionality and not give shell access make well defined tools.
 
 def extract_text(content):
     if isinstance(content, str):
@@ -24,6 +25,61 @@ def extract_text(content):
         return "\n".join(parts)
 
     return str(content)
+
+
+def handle_pending_confirmation(user_input: str) -> bool:
+    """Handle a pending confirmation without starting an agent turn.
+
+    Return True when the input belongs to the confirmation flow.  Keeping
+    this decision in one function makes it impossible for y/n to fall
+    through to ``agent.stream`` while an action is waiting.
+    """
+    if pending_actions.pending_action is None:
+        return False
+
+    answer = user_input.strip().casefold()
+
+    if answer in {"y", "yes"}:
+        result = pending_actions.confirm_pending_action()
+        console.print(Panel(result, border_style="green"))
+    elif answer in {"n", "no"}:
+        result = pending_actions.cancel_pending_action()
+        console.print(Panel(result, border_style="yellow"))
+    else:
+        console.print(
+            "[yellow]Please enter y to confirm or n to cancel.[/yellow]"
+        )
+
+    return True
+
+
+def run_agent_turn(user_input: str) -> None:
+    """Stream one agent turn, stopping when user confirmation is required."""
+    stream = agent.stream(
+        {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": user_input
+                }
+            ]
+        },
+        stream_mode="updates",
+    )
+
+    try:
+        for update in stream:
+            handle_update(update)
+
+            # A confirmation request is a hard boundary.  Do not let the
+            # model continue reasoning from the tool result and interpret
+            # the eventual user response as a new terminal command.
+            if pending_actions.pending_action is not None:
+                break
+    finally:
+        close_stream = getattr(stream, "close", None)
+        if close_stream is not None:
+            close_stream()
 
 
 def main():
@@ -44,46 +100,14 @@ def main():
             if user_input.lower() in {"exit", "quit"}:
                 break
 
-            # Handle pending confirmations before starting a new agent turn.
-            if pending_actions.pending_action is not None:
-                answer = user_input.lower()
-
-                if answer in {"y", "yes"}:
-                    result = pending_actions.confirm_pending_action()
-                    console.print(
-                        Panel(result, border_style="green")
-                    )
-
-                elif answer in {"n", "no"}:
-                    result = pending_actions.cancel_pending_action()
-                    console.print(
-                        Panel(result, border_style="yellow")
-                    )
-
-                else:
-                    console.print(
-                        "[yellow]Please enter y to confirm "
-                        "or n to cancel.[/yellow]"
-                    )
-                    continue
-
+            # Consume confirmation input before any agent turn can start.
+            if handle_pending_confirmation(user_input):
                 console.print()
                 continue
 
             console.print()
 
-            for update in agent.stream(
-                {
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": user_input
-                        }
-                    ]
-                },
-                stream_mode="updates",
-            ):
-                handle_update(update)
+            run_agent_turn(user_input)
 
             console.print()
 

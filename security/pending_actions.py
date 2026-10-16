@@ -1,16 +1,20 @@
 
 from pathlib import Path
 
-PROJECT_ROOT = Path.cwd().resolve()
-
 pending_action = None
+
+
+def get_project_root() -> Path:
+    """Return the active project root for the current working directory."""
+    return Path.cwd().resolve()
 
 
 def resolve_project_path(path: str) -> Path:
     """Resolve a path and reject targets outside the project root."""
-    target = (PROJECT_ROOT / path).resolve()
+    project_root = get_project_root()
+    target = (project_root / path).resolve()
 
-    if not target.is_relative_to(PROJECT_ROOT):
+    if not target.is_relative_to(project_root):
         raise ValueError("Path is outside the project directory.")
 
     return target
@@ -22,6 +26,7 @@ def request_delete(path: str) -> str:
 
     try:
         target = resolve_project_path(path)
+        project_root = get_project_root()
 
         if not target.is_file():
             return f"Error: File does not exist: {path}"
@@ -33,7 +38,7 @@ def request_delete(path: str) -> str:
 
         return (
             f"CONFIRMATION_REQUIRED: Delete file "
-            f"'{target.relative_to(PROJECT_ROOT)}'? "
+            f"'{target.relative_to(project_root)}'? "
             "Type y to confirm or n to cancel."
         )
 
@@ -41,12 +46,13 @@ def request_delete(path: str) -> str:
         return f"Error requesting file deletion: {exc}"
 
 
-def request_create_file(path: str) -> str:
-    """Register creation of an empty file for confirmation."""
+def request_create_file(path: str, content: str = "") -> str:
+    """Register a new file creation for confirmation."""
     global pending_action
 
     try:
         target = resolve_project_path(path)
+        project_root = get_project_root()
 
         if target.exists():
             return f"Error: Target already exists: {path}"
@@ -57,11 +63,12 @@ def request_create_file(path: str) -> str:
         pending_action = {
             "type": "create_file",
             "path": target,
+            "content": content,
         }
 
         return (
             f"CONFIRMATION_REQUIRED: Create file "
-            f"'{target.relative_to(PROJECT_ROOT)}'? "
+            f"'{target.relative_to(project_root)}'? "
             "Type y to confirm or n to cancel."
         )
 
@@ -84,11 +91,12 @@ def confirm_pending_action() -> str:
     try:
         target = action["path"]
         operation = action["type"]
+        project_root = get_project_root()
 
         # Revalidate the path immediately before execution.
         resolved = target.resolve()
 
-        if not resolved.is_relative_to(PROJECT_ROOT):
+        if not resolved.is_relative_to(project_root):
             return "Error: Target is outside the project."
 
         if operation == "delete_file":
@@ -96,7 +104,7 @@ def confirm_pending_action() -> str:
                 return "Error: Target no longer exists or is not a file."
 
             resolved.unlink()
-            return f"Deleted: {resolved.relative_to(PROJECT_ROOT)}"
+            return f"Deleted: {resolved.relative_to(project_root)}"
 
         elif operation == "create_file":
             if resolved.exists():
@@ -105,11 +113,10 @@ def confirm_pending_action() -> str:
             if not resolved.parent.is_dir():
                 return "Error: Parent directory no longer exists."
 
-            # Exclusive creation prevents overwriting an existing file.
-            with resolved.open("x", encoding="utf-8"):
-                pass
+            content = action.get("content", "")
+            resolved.write_text(content, encoding="utf-8")
 
-            return f"Created: {resolved.relative_to(PROJECT_ROOT)}"
+            return f"Created: {resolved.relative_to(project_root)}"
 
         return f"Error: Unsupported action type: {operation}"
 
@@ -131,3 +138,4 @@ def cancel_pending_action() -> str:
         return "File creation cancelled. Nothing was created."
 
     return "File deletion cancelled. Nothing was deleted."
+
